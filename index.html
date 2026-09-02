@@ -1,0 +1,677 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>TELL</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500&family=IBM+Plex+Sans+Condensed:wght@600;700&display=swap">
+<style>
+  :root{
+    --ink:#e8e4dc; --dim:#7a746b; --amber:#f0b23c; --blood:#d94b3a;
+    --bg:#08090b; --panel:#101216;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;padding:0;height:100%;background:var(--bg);color:var(--ink);
+    font-family:"IBM Plex Mono",ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    font-weight:400;overflow:hidden;overscroll-behavior:none;touch-action:none}
+  #wrap{position:fixed;inset:0;display:flex;align-items:center;justify-content:center}
+  canvas{display:block;image-rendering:pixelated;touch-action:none}
+
+  .layer{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;
+    justify-content:center;padding:24px;text-align:center;z-index:10;
+    background:rgba(6,7,9,.93);backdrop-filter:blur(3px)}
+  .layer.hidden{display:none}
+  h1{font-family:"IBM Plex Sans Condensed",Impact,sans-serif;font-weight:700;
+    font-size:clamp(56px,19vw,116px);letter-spacing:.30em;line-height:.94;
+    margin:0 0 10px 0;text-indent:.30em}
+  .sub{color:var(--dim);font-size:12px;letter-spacing:.22em;margin-bottom:30px;text-transform:uppercase}
+  .rules{max-width:340px;color:#a49d92;font-size:13px;line-height:1.85;margin-bottom:32px;text-align:left}
+  .rules b{color:var(--ink);font-weight:400}
+  .rules .k{color:var(--amber)}
+  button{font-family:inherit;font-size:12px;letter-spacing:.24em;text-transform:uppercase;
+    background:transparent;color:var(--ink);border:1px solid #3a3f47;padding:15px 34px;
+    cursor:pointer;transition:.15s}
+  button:hover,button:active{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+
+  #verdict{font-size:clamp(22px,7vw,34px);letter-spacing:.16em;margin:0 0 6px}
+  #haul{color:var(--dim);font-size:12px;letter-spacing:.16em;margin-bottom:30px}
+  #learnbox{border-left:2px solid var(--blood);padding:2px 0 2px 16px;margin:0 0 30px;
+    text-align:left;max-width:330px;min-height:20px}
+  #learnhead{color:var(--blood);font-size:10px;letter-spacing:.3em;margin-bottom:12px}
+  .lline{font-size:13.5px;line-height:1.9;color:#cfc8bd}
+  .lline::before{content:"— ";color:var(--dim)}
+  #knowwrap{width:min(330px,80vw);margin-bottom:26px;text-align:left}
+  #knowlabel{font-size:9px;letter-spacing:.26em;color:var(--dim);margin-bottom:7px;
+    display:flex;justify-content:space-between}
+  #knowbar{height:2px;background:#22252b}
+  #knowfill{height:100%;background:var(--blood);width:0%;transition:width .7s ease}
+
+  #hud{position:fixed;top:0;left:0;right:0;padding:14px 16px;display:flex;
+    justify-content:space-between;align-items:flex-start;font-size:11px;letter-spacing:.16em;
+    pointer-events:none;z-index:5;color:var(--dim)}
+  #carry{color:var(--amber)}
+  #carry.heavy{color:var(--blood)}
+  #banked{text-align:right}
+  #mute{position:fixed;bottom:12px;right:14px;z-index:6;font-size:10px;color:#3f444c;
+    letter-spacing:.2em;cursor:pointer;padding:8px}
+  #hint{position:fixed;bottom:36px;left:0;right:0;text-align:center;font-size:10px;
+    letter-spacing:.2em;color:#3f444c;z-index:5;pointer-events:none}
+  .foot{margin-top:26px;font-size:10px;letter-spacing:.18em;color:#3a3f47}
+  #toast{position:fixed;left:0;right:0;top:calc(50% + 84px);text-align:center;z-index:6;
+    font-size:11.5px;letter-spacing:.20em;color:var(--amber);opacity:0;
+    transition:opacity .3s;pointer-events:none;text-transform:lowercase}
+  #toast.show{opacity:.92}
+</style>
+</head>
+<body>
+
+<div id="wrap"><canvas id="c"></canvas></div>
+
+<div id="hud">
+  <div><span id="carry">CARRYING 0</span><span id="sight" style="color:#3f444c"></span></div>
+  <div id="banked">BANKED <span id="bankval">0</span><br><span id="runno" style="color:#3f444c">RUN 1</span></div>
+</div>
+<div id="hint">tap to move · walk over crates to loot · reach a gate to extract</div>
+<div id="mute">SOUND ON</div>
+<div id="toast"></div>
+
+<div class="layer" id="title">
+  <h1>TELL</h1>
+  <div class="sub">a prototype about being read</div>
+  <div class="rules">
+    <b>Tap</b> anywhere to move. You loot by walking over a crate.<br>
+    Every crate you carry <span class="k">shrinks your light</span>.<br>
+    Reach any of the four gates to <b>extract</b> and bank the haul.<br>
+    Die and you drop everything you were carrying.<br><br>
+    Something else is down here. It cannot see in the dark either.<br>
+    <span class="k">So it learns you instead.</span>
+  </div>
+  <button id="startbtn">Descend</button>
+  <div class="foot">headphones recommended</div>
+</div>
+
+<div class="layer hidden" id="over">
+  <div id="verdict">LOST</div>
+  <div id="haul">—</div>
+  <div id="knowwrap">
+    <div id="knowlabel"><span>IT KNOWS YOU</span><span id="knowpct">0%</span></div>
+    <div id="knowbar"><div id="knowfill"></div></div>
+  </div>
+  <div id="learnbox">
+    <div id="learnhead">IT HAS LEARNED</div>
+    <div id="lines"></div>
+  </div>
+  <button id="againbtn">Again</button>
+</div>
+
+<script>
+"use strict";
+/* ============================================================
+   TELL — extraction micro-loop with an adaptive stalker.
+   Prototype build. Plain shapes on purpose.
+   All learning state is in-memory for the tab session.
+   ============================================================ */
+
+// ---------- constants ----------
+// arena shape follows the device so the play space fills the screen
+const PORTRAIT = window.innerHeight > window.innerWidth * 1.15;
+const W = PORTRAIT ? 19 : 29, H = PORTRAIT ? 29 : 19;
+const WALL = 0, FLOOR = 1;
+const PLAYER_SPD = 4.6;               // tiles / sec
+const STALK_BASE = 3.35;
+const SIGHT_BASE = 6.6;               // tiles of light
+const SIGHT_PER_LOOT = 0.42;          // greed costs vision
+const SIGHT_MIN = 2.7;
+const MOVE_NOISE = 5.4;               // tiles it can hear you walking
+const LOOT_NOISE = 11.0;              // tiles it hears a crate crack open
+const CATCH_DIST = 0.62;
+const CRATES = 11;
+const SPAWN_DELAY = 5.0;              // seconds of grace at run start
+
+const DIRNAME = ["north","east","south","west"];
+
+// ---------- canvas ----------
+const cv = document.getElementById("c"), ctx = cv.getContext("2d");
+let TS = 20, OX = 0, OY = 0, DPR = 1;
+function fit(){
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  const availW = window.innerWidth, availH = window.innerHeight - 40;
+  TS = Math.max(10, Math.floor(Math.min(availW / W, availH / H)));
+  const pw = TS * W, ph = TS * H;
+  cv.style.width = pw + "px"; cv.style.height = ph + "px";
+  cv.width = Math.floor(pw * DPR); cv.height = Math.floor(ph * DPR);
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+  const r = cv.getBoundingClientRect(); OX = r.left; OY = r.top;
+}
+window.addEventListener("resize", fit);
+
+// ---------- audio (tiny, synthesised, no assets) ----------
+let AC = null, muted = false;
+function ac(){ if(!AC){ try{ AC = new (window.AudioContext||window.webkitAudioContext)(); }catch(e){} } return AC; }
+function blip(freq, dur, type, vol){
+  if(muted) return; const a = ac(); if(!a) return;
+  const o = a.createOscillator(), g = a.createGain();
+  o.type = type || "sine"; o.frequency.value = freq;
+  g.gain.setValueAtTime(0, a.currentTime);
+  g.gain.linearRampToValueAtTime(vol == null ? 0.09 : vol, a.currentTime + 0.012);
+  g.gain.exponentialRampToValueAtTime(0.0001, a.currentTime + dur);
+  o.connect(g); g.connect(a.destination); o.start(); o.stop(a.currentTime + dur + 0.02);
+}
+const sndLoot    = () => { blip(520,.09,"square",.05); setTimeout(()=>blip(780,.12,"square",.045),60); };
+const sndExtract = () => { blip(392,.16,"sine",.09); setTimeout(()=>blip(587,.30,"sine",.08),120); };
+const sndDeath   = () => { blip(150,.5,"sawtooth",.10); setTimeout(()=>blip(84,.8,"sawtooth",.09),90); };
+const sndHeart   = () => blip(58,.16,"sine",.10);
+document.getElementById("mute").onclick = e => {
+  muted = !muted; e.target.textContent = muted ? "SOUND OFF" : "SOUND ON";
+};
+
+// ---------- map ----------
+let grid, extracts = [];
+function newMap(){
+  grid = Array.from({length:H}, () => new Array(W).fill(WALL));
+  const rooms = [];
+  for(let i=0;i<9;i++){
+    const rw = 3 + ((Math.random()*4)|0), rh = 3 + ((Math.random()*4)|0);
+    const rx = 2 + ((Math.random()*(W-rw-4))|0), ry = 2 + ((Math.random()*(H-rh-4))|0);
+    for(let y=ry;y<ry+rh;y++) for(let x=rx;x<rx+rw;x++) grid[y][x] = FLOOR;
+    rooms.push([(rx+rw/2)|0, (ry+rh/2)|0]);
+  }
+  for(let i=1;i<rooms.length;i++) carve(rooms[i-1], rooms[i]);
+  const mid = [(W/2)|0, (H/2)|0];
+  for(let y=mid[1]-1;y<=mid[1]+1;y++) for(let x=mid[0]-1;x<=mid[0]+1;x++) grid[y][x]=FLOOR;
+  extracts = [ [mid[0],1], [W-2,mid[1]], [mid[0],H-2], [1,mid[1]] ];   // N E S W
+  extracts.forEach(e => { grid[e[1]][e[0]] = FLOOR; carve(mid, e); });
+  return mid;
+}
+function carve(a,b){
+  let [x,y]=a;
+  while(x!==b[0]){ grid[y][x]=FLOOR; grid[y][x] = FLOOR; x += Math.sign(b[0]-x); }
+  while(y!==b[1]){ grid[y][x]=FLOOR; y += Math.sign(b[1]-y); }
+  grid[y][x]=FLOOR;
+}
+const walkable = (x,y) => x>=0 && y>=0 && x<W && y<H && grid[y][x]===FLOOR;
+
+// BFS path on the grid
+function path(sx,sy,tx,ty){
+  if(!walkable(tx,ty)) return null;
+  const prev = new Int32Array(W*H).fill(-1), seen = new Uint8Array(W*H);
+  const q = [sy*W+sx]; seen[sy*W+sx]=1;
+  const D=[[1,0],[-1,0],[0,1],[0,-1]];
+  for(let h=0; h<q.length; h++){
+    const cur=q[h], cx=cur%W, cy=(cur/W)|0;
+    if(cx===tx && cy===ty){
+      const out=[]; let n=cur;
+      while(n!==-1){ out.push([n%W,(n/W)|0]); n=prev[n]; }
+      return out.reverse();
+    }
+    for(const [dx,dy] of D){
+      const nx=cx+dx, ny=cy+dy, ni=ny*W+nx;
+      if(walkable(nx,ny) && !seen[ni]){ seen[ni]=1; prev[ni]=cur; q.push(ni); }
+    }
+  }
+  return null;
+}
+// line of sight
+function los(x0,y0,x1,y1){
+  const dx=x1-x0, dy=y1-y0, n=Math.max(Math.abs(dx),Math.abs(dy))*2;
+  for(let i=1;i<n;i++){
+    const x=Math.round(x0+dx*i/n), y=Math.round(y0+dy*i/n);
+    if(!walkable(x,y)) return false;
+  }
+  return true;
+}
+
+// ---------- the profile: what it knows about you ----------
+const P = {
+  runs:0,
+  exitUse:[0,0,0,0],      // which gate you bank through
+  edgeLoot:0, coreLoot:0, // where you work
+  greed:[],               // crates carried at each run's end
+  panicStraight:0, panicSamples:0,
+  freeze:0, freezeSamples:0,
+  openDir:[0,0,0,0],      // first heading of each run
+  deaths:0, extractions:0,
+  knowMax:0               // high-water mark; see knowledge()
+};
+function traits(){
+  const t = [];
+  // favourite gate — honest about how thin the evidence still is
+  const tot = P.exitUse.reduce((a,b)=>a+b,0);
+  if(tot >= 1){
+    let bi=0; for(let i=1;i<4;i++) if(P.exitUse[i]>P.exitUse[bi]) bi=i;
+    const share = P.exitUse[bi]/tot;
+    if(tot === 1)
+      t.push({w:.34, s:`You left through the ${DIRNAME[bi]} gate. I will remember that.`, k:"exit"});
+    else if(share >= .55)
+      t.push({w:share, s:`You leave through the ${DIRNAME[bi]} gate. You always do.`, k:"exit"});
+  }
+  // looting territory
+  const lt = P.edgeLoot + P.coreLoot;
+  if(lt >= 4){
+    const edge = P.edgeLoot/lt;
+    if(edge >= .62) t.push({w:edge, s:"You work the edges first. The middle frightens you.", k:"zone"});
+    else if(edge <= .38) t.push({w:1-edge, s:"You go straight for the middle. Bold. Loud.", k:"zone"});
+  }
+  // greed
+  if(P.greed.length >= 1){
+    const avg = P.greed.reduce((a,b)=>a+b,0)/P.greed.length;
+    const conf = P.greed.length === 1 ? .38 : 1;
+    if(avg >= 4.4) t.push({w:Math.min(1,avg/7)*conf, s:"You never leave with a light bag.", k:"greed"});
+    else if(avg <= 2.2) t.push({w:.6*conf, s:"You leave early. You leave scared.", k:"greed"});
+  }
+  // panic movement
+  if(P.panicSamples >= 8){
+    const r = P.panicStraight/P.panicSamples;
+    if(r >= .62) t.push({w:r, s:"When I am close, you run in straight lines.", k:"panic"});
+    else if(r <= .30) t.push({w:.6, s:"When I am close, you double back. Predictably.", k:"panic"});
+  }
+  // freezing
+  if(P.freezeSamples >= 8){
+    const r = P.freeze/P.freezeSamples;
+    if(r >= .35) t.push({w:r, s:"You hold your breath when I am near. I can wait longer than you.", k:"freeze"});
+  }
+  // opening move
+  const ot = P.openDir.reduce((a,b)=>a+b,0);
+  if(ot >= 3){
+    let bi=0; for(let i=1;i<4;i++) if(P.openDir[i]>P.openDir[bi]) bi=i;
+    if(P.openDir[bi]/ot >= .6) t.push({w:P.openDir[bi]/ot, s:`You always open ${DIRNAME[bi]}.`, k:"open"});
+  }
+  t.sort((a,b)=>b.w-a.w);
+  return t;
+}
+// Two different things, deliberately separated:
+//   traits()    = what it currently BELIEVES about you. Can change, can be wrong.
+//   knowledge() = how much it has FIGURED OUT. A high-water mark — never falls,
+//                 because a meter that goes down is a broken promise. Approaches
+//                 but never reaches 100: it never fully knows you.
+function knowledge(){
+  const t = traits();
+  const weighted = t.reduce((a,x) => a + Math.min(1, x.w) * (100/6), 0);
+  const raw = weighted * 0.78 + Math.min(22, P.runs * 2);
+  P.knowMax = Math.max(P.knowMax || 0, Math.min(100, Math.round(raw)));
+  return P.knowMax;
+}
+
+// ---------- run state ----------
+let S = null, running = false, lastT = 0, shake = 0, heartT = 0;
+
+function newRun(){
+  const mid = newMap();
+  // crates: not too near the middle, not on a gate
+  const spots = [];
+  for(let y=1;y<H-1;y++) for(let x=1;x<W-1;x++){
+    if(!walkable(x,y)) continue;
+    const d = Math.hypot(x-mid[0], y-mid[1]);
+    if(d > 3.2 && !extracts.some(e=>e[0]===x&&e[1]===y)) spots.push([x,y]);
+  }
+  spots.sort(()=>Math.random()-0.5);
+  const crates = spots.slice(0, CRATES).map(([x,y]) => ({x,y,v: 1 + ((Math.random()*3)|0), taken:false}));
+
+  S = {
+    px: mid[0]+0.5, py: mid[1]+0.5, path:null, pi:0,
+    carry:0, opened:0, t:0, alive:true,
+    seen: Array.from({length:H},()=>new Array(W).fill(0)),
+    crates,
+    st:null,                       // stalker
+    lastKnown:null, lostFor:0,
+    stillFor:0, headings:[], openLogged:false,
+    quadTime:[0,0,0,0],          // within-run instinct: where you spend your time
+    flash:0, flashAt:null,
+    taught:false, toast:null, toastT:0,
+    endReason:null
+  };
+  P.runs++;
+  document.getElementById("runno").textContent = "RUN " + P.runs;
+  hudUpdate();
+}
+function spawnStalker(){
+  // it enters from wherever you are not
+  const cand = extracts.map(e=>({e, d:Math.hypot(e[0]-S.px, e[1]-S.py)}))
+                       .sort((a,b)=>b.d-a.d)[0].e;
+  S.st = { x:cand[0]+0.5, y:cand[1]+0.5, path:null, pi:0, spd:STALK_BASE, mode:"predict" };
+}
+
+function sightRadius(){ return Math.max(SIGHT_MIN, SIGHT_BASE - S.carry * SIGHT_PER_LOOT); }
+
+const toastEl = document.getElementById("toast");
+function toast(msg){
+  S.toast = msg; S.toastT = 2.1;
+  toastEl.textContent = msg; toastEl.classList.add("show");
+  clearTimeout(toast._h);
+  toast._h = setTimeout(() => toastEl.classList.remove("show"), 2100);
+}
+
+// ---------- input ----------
+function tapTo(cx, cy){
+  if(!running || !S.alive) return;
+  const r = cv.getBoundingClientRect();
+  const gx = Math.floor((cx - r.left) / (r.width / W));
+  const gy = Math.floor((cy - r.top)  / (r.height / H));
+  let tx = gx, ty = gy;
+  if(!walkable(tx,ty)){                       // snap to nearest floor
+    let best = null, bd = 1e9;
+    for(let y=0;y<H;y++) for(let x=0;x<W;x++){
+      if(!walkable(x,y)) continue;
+      const d = (x-gx)**2 + (y-gy)**2;
+      if(d < bd){ bd = d; best = [x,y]; }
+    }
+    if(!best || bd > 25) return; [tx,ty] = best;
+  }
+  const p = path(Math.floor(S.px), Math.floor(S.py), tx, ty);
+  if(p && p.length > 1){ S.path = p; S.pi = 1; }
+}
+cv.addEventListener("pointerdown", e => { e.preventDefault(); ac(); tapTo(e.clientX, e.clientY); });
+
+// ---------- simulation ----------
+function step(dt){
+  S.t += dt;
+  if(S.toastT > 0) S.toastT -= dt;
+  // within-run instinct — quadrant of the arena you are living in
+  S.quadTime[(S.py < H/2 ? 0 : 2) + (S.px < W/2 ? 0 : 1)] += dt;
+
+  // ---- player movement along path
+  let moved = 0;
+  if(S.path && S.pi < S.path.length){
+    const tgt = S.path[S.pi], tx = tgt[0]+0.5, ty = tgt[1]+0.5;
+    const dx = tx - S.px, dy = ty - S.py, d = Math.hypot(dx,dy);
+    const stepLen = PLAYER_SPD * dt;
+    if(d <= stepLen){ S.px = tx; S.py = ty; S.pi++; moved = d; }
+    else { S.px += dx/d*stepLen; S.py += dy/d*stepLen; moved = stepLen; }
+    S.headings.push([dx/d, dy/d]); if(S.headings.length > 26) S.headings.shift();
+  } else { S.path = null; }
+
+  // opening heading (first committed direction of the run)
+  if(!S.openLogged && S.t > 0.9 && S.headings.length){
+    const [hx,hy] = S.headings[S.headings.length-1];
+    const dir = Math.abs(hx) > Math.abs(hy) ? (hx>0?1:3) : (hy>0?2:0);
+    P.openDir[dir]++; S.openLogged = true;
+  }
+
+  // ---- reveal
+  const R = sightRadius();
+  const pxi = Math.floor(S.px), pyi = Math.floor(S.py);
+  for(let y=Math.max(0,pyi-8); y<Math.min(H,pyi+9); y++)
+    for(let x=Math.max(0,pxi-8); x<Math.min(W,pxi+9); x++){
+      const d = Math.hypot(x+0.5-S.px, y+0.5-S.py);
+      if(d <= R && los(pxi,pyi,x,y)) S.seen[y][x] = 2;
+      else if(S.seen[y][x] === 2) S.seen[y][x] = 1;
+    }
+
+  // ---- looting
+  for(const c of S.crates){
+    if(c.taken) continue;
+    if(Math.hypot(c.x+0.5-S.px, c.y+0.5-S.py) < 0.55){
+      c.taken = true; S.carry += c.v; S.opened++;
+      const dc = Math.hypot(c.x-W/2, c.y-H/2);
+      if(dc > W*0.28) P.edgeLoot++; else P.coreLoot++;
+      sndLoot(); hudUpdate();
+      S.flash = 1; S.flashAt = [c.x + 0.5, c.y + 0.5];
+      if(!S.taught && P.runs <= 2){ S.taught = true; toast("your light is smaller now"); }
+      if(S.st){ S.lastKnown = [S.px, S.py]; S.lostFor = 0; }   // it heard that
+    }
+  }
+
+  // ---- extraction
+  for(let i=0;i<4;i++){
+    const e = extracts[i];
+    if(Math.hypot(e[0]+0.5-S.px, e[1]+0.5-S.py) < 0.6){
+      if(S.carry > 0){
+        P.exitUse[i]++; P.greed.push(S.opened); P.extractions++;
+        bank += S.carry; S.endReason = "extract"; sndExtract(); endRun(); return;
+      }
+      if(S.toastT <= 0) toast("nothing to bank — go and get something");
+    }
+  }
+
+  // ---- stalker
+  if(!S.st && S.t > SPAWN_DELAY) spawnStalker();
+  if(S.st){
+    const st = S.st;
+    const dToP = Math.hypot(st.x - S.px, st.y - S.py);
+    const sees = dToP < 9 && los(Math.floor(st.x),Math.floor(st.y),pxi,pyi);
+    const hears = moved > 0.001 ? dToP < MOVE_NOISE : false;
+    const heardLoot = S.lostFor === 0 && S.lastKnown;
+
+    if(sees || hears){ S.lastKnown = [S.px,S.py]; S.lostFor = 0; st.mode = "hunt"; }
+    else { S.lostFor += dt; if(S.lostFor > 2.4) st.mode = "predict"; else st.mode = "search"; }
+
+    // where it goes
+    let goal;
+    if(st.mode === "hunt"){
+      goal = [pxi, pyi];
+    } else if(st.mode === "search" && S.lastKnown){
+      goal = [Math.floor(S.lastKnown[0]), Math.floor(S.lastKnown[1])];
+    } else {
+      goal = predictGoal();                    // <<< the learned behaviour
+    }
+    // repath periodically or when arrived
+    st.repath = (st.repath || 0) - dt;
+    if(!st.path || st.pi >= st.path.length || st.repath <= 0){
+      const p = path(Math.floor(st.x), Math.floor(st.y), goal[0], goal[1]);
+      if(p && p.length > 1){ st.path = p; st.pi = 1; }
+      st.repath = 0.45;
+    }
+    // speed ramps with run length and with how well it knows you
+    st.spd = STALK_BASE + Math.min(0.85, S.t * 0.017) + knowledge()/100 * 0.42
+             + (st.mode === "hunt" ? 0.30 : 0);
+    if(st.path && st.pi < st.path.length){
+      const tg = st.path[st.pi], tx = tg[0]+0.5, ty = tg[1]+0.5;
+      const dx = tx-st.x, dy = ty-st.y, d = Math.hypot(dx,dy), sl = st.spd*dt;
+      if(d <= sl){ st.x = tx; st.y = ty; st.pi++; }
+      else { st.x += dx/d*sl; st.y += dy/d*sl; }
+    }
+
+    // ---- behavioural sampling while threatened (sampled, not per-frame)
+    if(dToP < 7){
+      if(moved < 0.0005){ S.stillFor += dt; } else S.stillFor = 0;
+      S.sampleT = (S.sampleT || 0) - dt;
+      if(S.sampleT <= 0){
+        S.sampleT = 0.25;
+        P.freezeSamples++; if(S.stillFor > 0.35) P.freeze++;
+        if(S.headings.length >= 12){
+          const a = S.headings[S.headings.length-1], b = S.headings[S.headings.length-12];
+          P.panicSamples++; if(a[0]*b[0] + a[1]*b[1] > 0.72) P.panicStraight++;
+        }
+      }
+      // heartbeat
+      heartT -= dt;
+      if(heartT <= 0){ sndHeart(); heartT = 0.30 + dToP*0.075; }
+    }
+
+    if(dToP < CATCH_DIST){
+      P.greed.push(S.opened); P.deaths++;
+      S.endReason = "death"; shake = 1; sndDeath(); endRun(); return;
+    }
+    if(dToP < 3.4) shake = Math.max(shake, (3.4-dToP)/3.4 * 0.35);
+  }
+}
+
+// The stalker's prediction — this is where the profile becomes a threat.
+function predictGoal(){
+  const t = traits(), keys = t.map(x=>x.k);
+  // if you are heavy, it camps the gate you always use
+  if(S.carry >= 4 && keys.includes("exit")){
+    const tot = P.exitUse.reduce((a,b)=>a+b,0);
+    let bi=0; for(let i=1;i<4;i++) if(P.exitUse[i]>P.exitUse[bi]) bi=i;
+    if(P.exitUse[bi]/tot >= .55) return extracts[bi];
+  }
+  // heavy, but it has no history on you yet — it guesses the gate nearest
+  // the quadrant you have been working, and waits there.
+  if(S.carry >= 5){
+    let q = 0; for(let i=1;i<4;i++) if(S.quadTime[i] > S.quadTime[q]) q = i;
+    const qx = (q % 2) ? W*0.75 : W*0.25, qy = (q < 2) ? H*0.25 : H*0.75;
+    let gi = 0, gd = 1e9;
+    extracts.forEach((e,i) => { const d = Math.hypot(e[0]-qx, e[1]-qy); if(d < gd){ gd = d; gi = i; } });
+    return extracts[gi];
+  }
+  // otherwise it patrols the territory you loot in
+  const lt = P.edgeLoot + P.coreLoot;
+  const remaining = S.crates.filter(c=>!c.taken);
+  if(remaining.length && lt >= 6){
+    const preferEdge = P.edgeLoot/lt >= 0.5;
+    remaining.sort((a,b)=>{
+      const da = Math.hypot(a.x-W/2,a.y-H/2), db = Math.hypot(b.x-W/2,b.y-H/2);
+      return preferEdge ? db-da : da-db;
+    });
+    return [remaining[0].x, remaining[0].y];
+  }
+  // cold start (run 1, no profile yet): it still reads you, just from this run only.
+  // It heads for whatever you have not looted inside the quadrant you keep living in.
+  if(remaining.length){
+    let q = 0; for(let i=1;i<4;i++) if(S.quadTime[i] > S.quadTime[q]) q = i;
+    const qx = (q % 2) ? W*0.75 : W*0.25, qy = (q < 2) ? H*0.25 : H*0.75;
+    remaining.sort((a,b)=>Math.hypot(a.x-qx,a.y-qy) - Math.hypot(b.x-qx,b.y-qy));
+    return [remaining[0].x, remaining[0].y];
+  }
+  return [(W/2)|0,(H/2)|0];
+}
+
+// ---------- render ----------
+function draw(){
+  const w = W*TS, h = H*TS;
+  ctx.save();
+  if(shake > 0){ ctx.translate((Math.random()-.5)*shake*9, (Math.random()-.5)*shake*9); }
+  ctx.fillStyle = "#08090b"; ctx.fillRect(-20,-20,w+40,h+40);
+
+  const R = sightRadius();
+  for(let y=0;y<H;y++) for(let x=0;x<W;x++){
+    const v = S.seen[y][x]; if(!v) continue;
+    const isW = grid[y][x] === WALL;
+    if(v === 2){
+      const d = Math.hypot(x+0.5-S.px, y+0.5-S.py);
+      const f = Math.max(0, 1 - d/R);
+      ctx.fillStyle = isW
+        ? `rgba(${52+70*f|0},${54+66*f|0},${62+64*f|0},1)`
+        : `rgba(${16+52*f|0},${17+50*f|0},${20+48*f|0},1)`;
+    } else {
+      ctx.fillStyle = isW ? "#23262c" : "#111318";   // remembered, not seen
+    }
+    ctx.fillRect(x*TS, y*TS, TS, TS);
+  }
+
+  // gates
+  for(let i=0;i<4;i++){
+    const e = extracts[i];
+    if(!S.seen[e[1]][e[0]]) continue;
+    const lit = S.seen[e[1]][e[0]] === 2;
+    ctx.strokeStyle = lit ? "rgba(120,220,170,.95)" : "rgba(70,120,100,.45)";
+    ctx.lineWidth = Math.max(1.5, TS*0.14);
+    ctx.strokeRect(e[0]*TS+TS*0.18, e[1]*TS+TS*0.18, TS*0.64, TS*0.64);
+  }
+
+  // crates
+  for(const c of S.crates){
+    if(c.taken || !S.seen[c.y][c.x]) continue;
+    const lit = S.seen[c.y][c.x] === 2;
+    ctx.fillStyle = lit ? "#f0b23c" : "rgba(120,90,40,.35)";
+    const s = TS*0.42, o = (TS-s)/2;
+    ctx.fillRect(c.x*TS+o, c.y*TS+o, s, s);
+  }
+
+  // stalker — only drawn when you can actually see it
+  if(S.st){
+    const sx = Math.floor(S.st.x), sy = Math.floor(S.st.y);
+    const d = Math.hypot(S.st.x-S.px, S.st.y-S.py);
+    if(d <= R + 0.6 && los(Math.floor(S.px),Math.floor(S.py),sx,sy)){
+      ctx.fillStyle = "#d94b3a";
+      ctx.beginPath(); ctx.arc(S.st.x*TS, S.st.y*TS, TS*0.30, 0, 7); ctx.fill();
+      ctx.strokeStyle = "rgba(217,75,58,.35)"; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(S.st.x*TS, S.st.y*TS, TS*0.52, 0, 7); ctx.stroke();
+    }
+  }
+
+  // loot pickup flash — cheap juice, reads as "that made a noise"
+  if(S.flash > 0 && S.flashAt){
+    const r = (1 - S.flash) * TS * 2.6 + TS * 0.3;
+    ctx.strokeStyle = `rgba(240,178,60,${S.flash * 0.75})`;
+    ctx.lineWidth = Math.max(1.2, TS * 0.09);
+    ctx.beginPath(); ctx.arc(S.flashAt[0]*TS, S.flashAt[1]*TS, r, 0, 7); ctx.stroke();
+  }
+
+  // player + light ring
+  const g = ctx.createRadialGradient(S.px*TS, S.py*TS, TS*0.4, S.px*TS, S.py*TS, R*TS);
+  g.addColorStop(0, "rgba(240,226,200,.12)"); g.addColorStop(1, "rgba(240,226,200,0)");
+  ctx.fillStyle = g; ctx.beginPath(); ctx.arc(S.px*TS, S.py*TS, R*TS, 0, 7); ctx.fill();
+  ctx.fillStyle = "#e8e4dc";
+  ctx.beginPath(); ctx.arc(S.px*TS, S.py*TS, TS*0.27, 0, 7); ctx.fill();
+
+  // destination marker
+  if(S.path && S.pi < S.path.length){
+    const e = S.path[S.path.length-1];
+    ctx.strokeStyle = "rgba(232,228,220,.22)"; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.arc(e[0]*TS+TS/2, e[1]*TS+TS/2, TS*0.30, 0, 7); ctx.stroke();
+  }
+  ctx.restore();
+}
+
+// ---------- hud / screens ----------
+let bank = 0;
+function hudUpdate(){
+  const c = document.getElementById("carry");
+  c.textContent = "CARRYING " + S.carry;
+  c.className = S.carry >= 6 ? "heavy" : "";
+  document.getElementById("sight").textContent =
+    S.carry > 0 ? "   LIGHT " + sightRadius().toFixed(1) : "";
+  document.getElementById("bankval").textContent = bank;
+  document.getElementById("runno").textContent = "RUN " + P.runs;
+}
+
+function endRun(){
+  running = false; S.alive = false;
+  const t = traits();
+  document.getElementById("verdict").textContent =
+    S.endReason === "extract" ? "EXTRACTED" : "LOST";
+  document.getElementById("verdict").style.color =
+    S.endReason === "extract" ? "#78dcaa" : "#d94b3a";
+  document.getElementById("haul").textContent =
+    S.endReason === "extract"
+      ? `+${S.carry} banked · ${bank} total`
+      : `${S.carry} dropped in the dark · ${bank} total`;
+
+  const k = knowledge();
+  document.getElementById("knowpct").textContent = k + "%";
+  document.getElementById("knowfill").style.width = "0%";
+  setTimeout(()=>{ document.getElementById("knowfill").style.width = k + "%"; }, 90);
+
+  const box = document.getElementById("lines"); box.innerHTML = "";
+  if(!t.length){
+    document.getElementById("learnhead").textContent = "IT IS STILL WATCHING";
+    const d = document.createElement("div");
+    d.className = "lline"; d.textContent = "Nothing yet. Give it another run.";
+    box.appendChild(d);
+  } else {
+    document.getElementById("learnhead").textContent = "IT HAS LEARNED";
+    t.slice(0,3).forEach((x,i)=>{
+      const d = document.createElement("div");
+      d.className = "lline"; d.textContent = x.s; d.style.opacity = 0;
+      box.appendChild(d);
+      setTimeout(()=>{ d.style.transition="opacity .45s"; d.style.opacity=1; }, 320 + i*430);
+    });
+  }
+  document.getElementById("over").classList.remove("hidden");
+}
+
+function begin(){
+  document.getElementById("title").classList.add("hidden");
+  document.getElementById("over").classList.add("hidden");
+  newRun(); fit(); running = true; lastT = performance.now();
+  requestAnimationFrame(loop);
+}
+document.getElementById("startbtn").onclick = () => { ac(); begin(); };
+document.getElementById("againbtn").onclick = begin;
+
+function loop(now){
+  const dt = Math.min(0.05, (now - lastT)/1000); lastT = now;
+  if(running){ step(dt); hudUpdate(); }
+  if(shake > 0) shake = Math.max(0, shake - dt*1.7);
+  if(S && S.flash > 0) S.flash = Math.max(0, S.flash - dt*2.4);
+  if(S) draw();
+  if(running || shake > 0) requestAnimationFrame(loop);
+}
+
+fit(); newRun(); draw();
+</script>
+</body>
+</html>
